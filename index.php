@@ -2,36 +2,73 @@
 /*
 Plugin Name: SKILL Plugin
 Plugin URI: http://your_plugin_uri_here
-Description: Control and receive notifications for Ubi-House Smart Home Devices.
+Description: Sends notifications to Mastodon based on Ubi-House Smart Home Device data.
 Author: Tao Zhou
 Author URI: http://your_author_uri_here
 Version: 1.0
 */
 
-// 创建插件菜单项
+// Register REST API endpoint to receive carbon dioxide data
+add_action('rest_api_init', function () {
+    register_rest_route('skill/v1', '/carbon_data/', array(
+        'methods' => 'POST',
+        'callback' => 'store_carbon_data',
+        'permission_callback' => '__return_true'
+    ));
+});
+
+function store_carbon_data(WP_REST_Request $request) {
+    $carbon_data = $request->get_param('data');
+    if (is_null($carbon_data)) {
+        return new WP_Error('no_data', 'No data received', array('status' => 400));
+    }
+    update_option('carbon_data_value', $carbon_data);
+    trigger_mastodon_message($carbon_data);
+    return new WP_REST_Response('Data stored successfully', 200);
+}
+
+function trigger_mastodon_message($carbon_data) {
+    $co2_turn_on_threshold = (int) get_option('co2_threshold', 1000);
+    $co2_turn_off_threshold = (int) get_option('co2_turn_off_threshold', 500);
+
+    if ($carbon_data >= $co2_turn_on_threshold) {
+        send_to_mastodon('turn on');
+    } elseif ($carbon_data <= $co2_turn_off_threshold) {
+        send_to_mastodon('turn off');
+    }
+}
+
+function send_to_mastodon($message) {
+    $mastodon_api_url = get_option('mastodon_api_url');
+    $mastodon_token = get_option('mastodon_token');
+    $response = wp_remote_post($mastodon_api_url, array(
+        'headers' => array(
+            'Authorization' => 'Bearer ' . $mastodon_token,
+        ),
+        'body' => array(
+            'status' => $message,
+        ),
+    ));
+    if (is_wp_error($response)) {
+        error_log($response->get_error_message());
+    }
+}
+
 function skill_plugin_menu() {
-    add_menu_page('SKILL Control Panel', 'SKILL Control', 'manage_options', 'skill-main', 'skill_plugin_main_page', 'dashicons-smartphone', 90);
-    add_submenu_page('skill-main', 'Ubi-House Device Settings', 'Device Settings', 'manage_options', 'ubi-house-device-settings', 'ubi_house_device_settings_page');
-    add_submenu_page('skill-main', 'Add Linkage', 'Add Linkage', 'manage_options', 'skill-add-linkage', 'skill_add_linkage_page');
+    add_options_page(
+        'SKILL Plugin Settings',
+        'SKILL Plugin',
+        'manage_options',
+        'ubi-house-device-settings',
+        'skill_plugin_settings_page'
+    );
 }
 add_action('admin_menu', 'skill_plugin_menu');
 
-// 插件主页
-function skill_plugin_main_page() {
-    if (!current_user_can('manage_options')) {
-        wp_die(__('You do not have sufficient permissions to access this page.'));
-    }
-    echo '<h1>Welcome to SKILL Control Panel</h1>';
-}
-
-// Ubi-House设备设置页面
-function ubi_house_device_settings_page() {
-    if (!current_user_can('manage_options')) {
-        wp_die(__('You do not have sufficient permissions to access this page.'));
-    }
+function skill_plugin_settings_page() {
     ?>
     <div class="wrap">
-        <h1>Ubi-House Smart Home Device Settings</h1>
+        <h1>SKILL Plugin Settings</h1>
         <form method="post" action="options.php">
             <?php
             settings_fields('ubi_house_device_settings_group');
@@ -43,23 +80,11 @@ function ubi_house_device_settings_page() {
     <?php
 }
 
-// 添加联动页面
-function skill_add_linkage_page() {
-    if (!current_user_can('manage_options')) {
-        wp_die(__('You do not have sufficient permissions to access this page.'));
-    }
-    ?>
-    <div class="wrap">
-        <h1>Add Linkage</h1>
-        <!-- 表单、联动规则等内容可以在这里定义 -->
-    </div>
-    <?php
-}
-
-// 注册插件设置
 function skill_plugin_settings_init() {
     register_setting('ubi_house_device_settings_group', 'mastodon_api_url');
     register_setting('ubi_house_device_settings_group', 'mastodon_token');
+    register_setting('ubi_house_device_settings_group', 'co2_threshold');
+    register_setting('ubi_house_device_settings_group', 'co2_turn_off_threshold');
 
     add_settings_section(
         'ubi_house_device_settings_mastodon_section',
@@ -83,6 +108,22 @@ function skill_plugin_settings_init() {
         'ubi-house-device-settings',
         'ubi_house_device_settings_mastodon_section'
     );
+
+    add_settings_field(
+        'co2_threshold',
+        'CO2 "Turn On" Threshold (in ppm)',
+        'skill_plugin_co2_threshold_callback',
+        'ubi-house-device-settings',
+        'ubi_house_device_settings_mastodon_section'
+    );
+
+    add_settings_field(
+        'co2_turn_off_threshold',
+        'CO2 "Turn Off" Threshold (in ppm)',
+        'skill_plugin_co2_turn_off_threshold_callback',
+        'ubi-house-device-settings',
+        'ubi_house_device_settings_mastodon_section'
+    );
 }
 add_action('admin_init', 'skill_plugin_settings_init');
 
@@ -94,5 +135,15 @@ function skill_plugin_mastodon_api_url_callback() {
 function skill_plugin_mastodon_token_callback() {
     $mastodon_token = esc_attr(get_option('mastodon_token', ''));
     echo "<input type='password' name='mastodon_token' value='{$mastodon_token}' />";
+}
+
+function skill_plugin_co2_threshold_callback() {
+    $co2_threshold = esc_attr(get_option('co2_threshold', '1000'));
+    echo "<input type='text' name='co2_threshold' value='{$co2_threshold}' />";
+}
+
+function skill_plugin_co2_turn_off_threshold_callback() {
+    $co2_turn_off_threshold = esc_attr(get_option('co2_turn_off_threshold', '500'));
+    echo "<input type='text' name='co2_turn_off_threshold' value='{$co2_turn_off_threshold}' />";
 }
 ?>
