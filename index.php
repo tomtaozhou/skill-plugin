@@ -1,3 +1,4 @@
+<?php
 /*
 Plugin Name: SKILL Plugin
 Plugin URI: http://your_plugin_uri_here
@@ -9,7 +10,7 @@ Version: 1.0
 
 // 创建插件菜单项
 function skill_plugin_menu() {
-    add_menu_page('SKILL Control Panel', 'SKILL Control', 'manage_options', 'skill-main', 'skill_plugin_main_page');
+    add_menu_page('SKILL Control Panel', 'SKILL Control', 'manage_options', 'skill-main', 'skill_plugin_main_page', 'dashicons-smartphone', 90);
     add_submenu_page('skill-main', 'Ubi-House Device Settings', 'Device Settings', 'manage_options', 'ubi-house-device-settings', 'ubi_house_device_settings_page');
     add_submenu_page('skill-main', 'Add Linkage', 'Add Linkage', 'manage_options', 'skill-add-linkage', 'skill_add_linkage_page');
 }
@@ -17,12 +18,17 @@ add_action('admin_menu', 'skill_plugin_menu');
 
 // 插件主页
 function skill_plugin_main_page() {
+    if (!current_user_can('manage_options')) {
+        wp_die(__('You do not have sufficient permissions to access this page.'));
+    }
     echo '<h1>Welcome to SKILL Control Panel</h1>';
-    // 可以显示统计或其他信息
 }
 
 // Ubi-House设备设置页面
 function ubi_house_device_settings_page() {
+    if (!current_user_can('manage_options')) {
+        wp_die(__('You do not have sufficient permissions to access this page.'));
+    }
     ?>
     <div class="wrap">
         <h1>Ubi-House Smart Home Device Settings</h1>
@@ -35,13 +41,17 @@ function ubi_house_device_settings_page() {
         </form>
     </div>
     <?php
+}
 
 // 添加联动页面
 function skill_add_linkage_page() {
+    if (!current_user_can('manage_options')) {
+        wp_die(__('You do not have sufficient permissions to access this page.'));
+    }
     ?>
     <div class="wrap">
         <h1>Add Linkage</h1>
-        <!-- 这里可以添加一个表单，用于定义联动规则，例如：当哪个传感器的读数达到某个值时，触发哪个设备的哪个动作 -->
+        <!-- 表单、联动规则等内容可以在这里定义 -->
     </div>
     <?php
 }
@@ -77,11 +87,12 @@ function skill_plugin_settings_init() {
 add_action('admin_init', 'skill_plugin_settings_init');
 
 function skill_plugin_mastodon_api_url_callback() {
-    $mastodon_api_url = get_option('mastodon_api_url', '');
+    $mastodon_api_url = esc_attr(get_option('mastodon_api_url', ''));
     echo "<input type='text' name='mastodon_api_url' value='{$mastodon_api_url}' />";
 }
 
 function skill_plugin_mastodon_token_callback() {
-    $mastodon_token = get_option('mastodon_token', '');
+    $mastodon_token = esc_attr(get_option('mastodon_token', ''));
     echo "<input type='password' name='mastodon_token' value='{$mastodon_token}' />";
 }
+?>
