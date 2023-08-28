@@ -75,19 +75,45 @@ function ubi_house_device_settings_page() {
     <?php
 }
 
-
-// 添加联动页面
+    //添加联动界面
 function skill_add_linkage_page() {
     if (!current_user_can('manage_options')) {
         wp_die(__('You do not have sufficient permissions to access this page.'));
     }
+
+    // 检查是否有提交
+    if (isset($_POST['set_linkage'])) {
+        update_option('linkage_device', sanitize_text_field($_POST['device_name']));
+        update_option('linkage_threshold_greater', intval($_POST['threshold_greater']));
+        update_option('linkage_threshold_less', intval($_POST['threshold_less']));
+        echo '<div class="updated"><p>Linkage updated successfully!</p></div>';
+    }
+
+    // 获取已保存的联动设备和阈值
+    $saved_device_name = get_option('linkage_device', '');
+    $saved_threshold_greater = get_option('linkage_threshold_greater', '');
+    $saved_threshold_less = get_option('linkage_threshold_less', '');
+
     ?>
     <div class="wrap">
         <h1>Add Linkage</h1>
-        <!-- 表单、联动规则等内容可以在这里定义 -->
+        
+        <form method="post" action="">
+            <label for="device_name">Device Name:</label>
+            <input type="text" name="device_name" id="device_name" value="<?php echo esc_attr($saved_device_name); ?>" required>
+            
+            <label for="threshold_greater">Threshold (Greater than or equal to):</label>
+            <input type="number" name="threshold_greater" id="threshold_greater" value="<?php echo esc_attr($saved_threshold_greater); ?>" required>
+            
+            <label for="threshold_less">Threshold (Less than):</label>
+            <input type="number" name="threshold_less" id="threshold_less" value="<?php echo esc_attr($saved_threshold_less); ?>" required>
+            
+            <input type="submit" name="set_linkage" value="Set Linkage">
+        </form>
     </div>
     <?php
 }
+
 
 // Mastodon API相关设置
 function skill_plugin_settings_init() {
