@@ -2,7 +2,7 @@
 /*
 Plugin Name: SKILL Plugin
 Plugin URI: http://your_plugin_uri_here
-Description: Control and receive notifications for Ubi-House Smart Home Devices.
+Description: Control and receive notifications for Ubi-House Smart Home Devices based on post values.
 Author: Tao Zhou
 Author URI: http://your_author_uri_here
 Version: 1.0
@@ -75,10 +75,10 @@ function ubi_house_device_settings_page() {
     <?php
 }
 
-    //添加联动界面
+//添加联动界面
 function skill_add_linkage_page() {
     if (!current_user_can('manage_options')) {
-        wp_die(__('You do not have sufficient permissions to access this page.'));
+        wp_die(__('You do not have sufficient permissions to access this page.')));
     }
 
     // 检查是否有提交
@@ -113,7 +113,6 @@ function skill_add_linkage_page() {
     </div>
     <?php
 }
-
 
 // Mastodon API相关设置
 function skill_plugin_settings_init() {
@@ -155,56 +154,44 @@ function skill_plugin_mastodon_token_callback() {
     echo "<input type='password' name='mastodon_token' value='{$mastodon_token}' />";
 }
 
-// REST API端点来处理设备数据
-add_action('rest_api_init', function () {
-    register_rest_route('skill/v1', '/handle_data/', array(
-        'methods' => 'POST',
-        'callback' => 'skill_handle_device_data',
-        'permission_callback' => '__return_true' 
-    ));
-});
+// 检查post的数值并进行联动
+add_action('save_post', 'check_post_value_for_linkage');
 
-function skill_handle_device_data(WP_REST_Request $request) {
-    $received_data = $request->get_param('data');
-    $device_name = $request->get_param('device_name'); 
+function check_post_value_for_linkage($post_id) {
+    // 如果这是一个自动保存的版本，我们不会发送通知
+    if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) 
+        return;
 
-    if (is_null($received_data) || is_null($device_name)) {
-        return new WP_Error('no_data', 'No data or device name received', array('status' => 400));
+    // 获取post内容
+    $post_content = get_post_field('post_content', $post_id);
+
+    // 这里我们假设数值是在post内容中的某个特定格式，例如[value=123]，你可以根据实际情况进行修改
+    preg_match('/\[value=(\d+)\]/', $post_content, $matches);
+    if (isset($matches[1])) {
+        $post_value = intval($matches[1]);
+
+        // 获取联动设定的阈值
+        $threshold_greater = get_option('linkage_threshold_greater', 0);
+        $threshold_less = get_option('linkage_threshold_less', PHP_INT_MAX);
+
+        // 检查数值是否满足联动条件
+        if ($post_value >= $threshold_greater && $post_value < $threshold_less) {
+            // 这里执行联动操作，例如发送ActivityPub通知到Mastodon账号
+            send_notification_to_mastodon("The value in post ID {$post_id} has reached the linkage threshold.");
+        }
     }
-
-    $user = get_user_by('login', $device_name);
-    if (!$user) {
-        return new WP_Error('no_device', 'Device not found', array('status' => 400));
-    }
-
-    $post_data = array(
-        'post_title'    => 'Data from ' . $device_name,
-        'post_content'  => json_encode($received_data),
-        'post_status'   => 'publish',
-        'post_author'   => $user->ID,
-        'post_category' => array(8,39) // 需要的话，可以更改或删除这一行
-    );
-
-    // 使用wp_insert_post()插入新的post
-    $post_id = wp_insert_post($post_data);
-
-    if ($post_id == 0) {
-        return new WP_Error('insert_error', 'Failed to insert post', array('status' => 500));
-    }
-
-    return new WP_REST_Response('Data saved successfully', 200);
 }
 
-function skill_send_command_to_device($device_id, $command) {
-    $api_url = get_post_meta($device_id, 'skill_device_api_url', true);
-    $token = get_post_meta($device_id, 'skill_device_token', true);
+function send_notification_to_mastodon($message) {
+    $mastodon_api_url = get_option('mastodon_api_url', '');
+    $mastodon_token = get_option('mastodon_token', '');
 
-    $response = wp_remote_post($api_url, array(
+    $response = wp_remote_post($mastodon_api_url, array(
         'headers' => array(
-            'Authorization' => 'Bearer ' . $token,
+            'Authorization' => 'Bearer ' . $mastodon_token,
         ),
         'body' => array(
-            'command' => $command,
+            'status' => $message,
         ),
     ));
 
