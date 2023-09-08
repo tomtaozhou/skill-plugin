@@ -2,7 +2,7 @@
 /*
 Plugin Name: SKILL Plugin
 Plugin URI: http://your_plugin_uri_here
-Description: Control and receive notifications for Ubi-House Smart Home Devices based on post values.
+Description: Control and send notifications to ActivityPub devices based on post values from selected user.
 Author: Tao Zhou
 Author URI: http://your_author_uri_here
 Version: 1.0
@@ -11,8 +11,6 @@ Version: 1.0
 // 创建插件菜单项
 function skill_plugin_menu() {
     add_menu_page('SKILL Control Panel', 'SKILL Control', 'manage_options', 'skill-main', 'skill_plugin_main_page', 'dashicons-smartphone', 90);
-    add_submenu_page('skill-main', 'Ubi-House Device Settings', 'Device Settings', 'manage_options', 'ubi-house-device-settings', 'ubi_house_device_settings_page');
-    add_submenu_page('skill-main', 'Add Linkage', 'Add Linkage', 'manage_options', 'skill-add-linkage', 'skill_add_linkage_page');
 }
 add_action('admin_menu', 'skill_plugin_menu');
 
@@ -21,163 +19,101 @@ function skill_plugin_main_page() {
     if (!current_user_can('manage_options')) {
         wp_die(__('You do not have sufficient permissions to access this page.'));
     }
-    echo '<h1>Welcome to SKILL Control Panel</h1>';
-}
 
-// Ubi-House设备设置页面
-function ubi_house_device_settings_page() {
-    if (isset($_POST['add_device'])) {
-        $userdata = array(
-            'user_login' => $_POST['device_name'],
-            'user_pass'  => wp_generate_password(),
-            'role'       => 'ubi_house_device'
-        );
-        $user_id = wp_insert_user($userdata);
-
-        if (!is_wp_error($user_id)) {
-            update_user_meta($user_id, 'device_api_key', $_POST['api_key']);
-        }
+    // Handle form submission
+    if (isset($_POST['submit_settings'])) {
+        update_option('selected_user', sanitize_text_field($_POST['selected_user']));
+        update_option('condition', sanitize_text_field($_POST['condition']));
+        update_option('threshold_value', intval($_POST['threshold_value']));
+        update_option('mastodon_api_url', sanitize_text_field($_POST['mastodon_api_url']));
+        update_option('mastodon_token', sanitize_text_field($_POST['mastodon_token']));
+        update_option('notification_message', sanitize_text_field($_POST['notification_message']));
+        echo '<div class="updated"><p>Settings updated successfully!</p></div>';
     }
 
-    if (!current_user_can('manage_options')) {
-        wp_die(__('You do not have sufficient permissions to access this page.'));
+    // Fetch saved settings
+    $selected_user = get_option('selected_user', '');
+    $condition = get_option('condition', '=');
+    $threshold_value = get_option('threshold_value', 0);
+    $mastodon_api_url = get_option('mastodon_api_url', '');
+    $mastodon_token = get_option('mastodon_token', '');
+    $notification_message = get_option('notification_message', '');
+
+    // Fetch all users
+    $users = get_users();
+
+    echo '<div class="wrap">';
+    echo '<h1>SKILL Control Panel</h1>';
+    echo '<form method="post" action="">';
+
+    // User selection
+    echo '<h2>Select User</h2>';
+    echo '<select name="selected_user">';
+    foreach ($users as $user) {
+        echo '<option value="' . esc_attr($user->ID) . '" ' . selected($selected_user, $user->ID, false) . '>' . esc_html($user->display_name) . '</option>';
     }
-    ?>
-    <div class="wrap">
-        <h1>Ubi-House Smart Home Device Settings</h1>
-        
-        <h2>Add Device</h2>
-        <form method="post" action="">
-            <input type="text" name="device_name" placeholder="Device Name" required>
-            <input type="text" name="api_key" placeholder="API Key" required>
-            <input type="submit" name="add_device" value="Add Device">
-        </form>
+    echo '</select>';
 
-        <h2>Existing Devices</h2>
-        <?php
-        $users = get_users(array('role' => 'ubi_house_device'));
-        foreach ($users as $user) {
-            echo '<p>' . esc_html($user->user_login) . ' | API Key: ' . esc_html(get_user_meta($user->ID, 'device_api_key', true)) . '</p>';
-        }
-        ?>
-        
-        <h2>Mastodon Settings</h2>
-        <form method="post" action="options.php">
-            <?php
-            settings_fields('ubi_house_device_settings_group');
-            do_settings_sections('ubi-house-device-settings');
-            submit_button();
-            ?>
-        </form>
-        <p>Current Mastodon API URL: <?php echo esc_attr(get_option('mastodon_api_url', '')); ?></p>
-        <p>Current Mastodon Token: <?php echo str_repeat('*', strlen(esc_attr(get_option('mastodon_token', '')))); ?></p>
-    </div>
-    <?php
+    // Condition settings
+    echo '<h2>Condition Settings</h2>';
+    echo '<select name="condition">';
+    echo '<option value="=" ' . selected($condition, '=', false) . '>Equal to</option>';
+    echo '<option value=">" ' . selected($condition, '>', false) . '>Greater than</option>';
+    echo '<option value="<" ' . selected($condition, '<', false) . '>Less than</option>';
+    echo '</select>';
+    echo '<input type="number" name="threshold_value" value="' . esc_attr($threshold_value) . '">';
+
+    // Mastodon settings
+    echo '<h2>Mastodon Settings</h2>';
+    echo 'API URL: <input type="text" name="mastodon_api_url" value="' . esc_attr($mastodon_api_url) . '"><br>';
+    echo 'Token: <input type="text" name="mastodon_token" value="' . esc_attr($mastodon_token) . '"><br>';
+
+    // Notification message
+    echo '<h2>Notification Message</h2>';
+    echo '<textarea name="notification_message" rows="4" cols="50">' . esc_textarea($notification_message) . '</textarea><br>';
+
+    // Submit button
+    echo '<input type="submit" name="submit_settings" value="Save Settings">';
+    echo '</form>';
+    echo '</div>';
 }
 
-//添加联动界面
-function skill_add_linkage_page() {
-    if (!current_user_can('manage_options')) {
-        wp_die(__('You do not have sufficient permissions to access this page.'));
-    }
+// Check post values and send notification if necessary
+add_action('save_post', 'check_post_value_and_notify');
 
-    // 检查是否有提交
-    if (isset($_POST['set_linkage'])) {
-        update_option('linkage_device', sanitize_text_field($_POST['device_name']));
-        update_option('linkage_threshold_greater', intval($_POST['threshold_greater']));
-        update_option('linkage_threshold_less', intval($_POST['threshold_less']));
-        echo '<div class="updated"><p>Linkage updated successfully!</p></div>';
-    }
-
-    // 获取已保存的联动设备和阈值
-    $saved_device_name = get_option('linkage_device', '');
-    $saved_threshold_greater = get_option('linkage_threshold_greater', '');
-    $saved_threshold_less = get_option('linkage_threshold_less', '');
-
-    ?>
-    <div class="wrap">
-        <h1>Add Linkage</h1>
-        
-        <form method="post" action="">
-            <label for="device_name">Device Name:</label>
-            <input type="text" name="device_name" id="device_name" value="<?php echo esc_attr($saved_device_name); ?>" required>
-            
-            <label for="threshold_greater">Threshold (Greater than or equal to):</label>
-            <input type="number" name="threshold_greater" id="threshold_greater" value="<?php echo esc_attr($saved_threshold_greater); ?>" required>
-            
-            <label for="threshold_less">Threshold (Less than):</label>
-            <input type="number" name="threshold_less" id="threshold_less" value="<?php echo esc_attr($saved_threshold_less); ?>" required>
-            
-            <input type="submit" name="set_linkage" value="Set Linkage">
-        </form>
-    </div>
-    <?php
-}
-
-// Mastodon API相关设置
-function skill_plugin_settings_init() {
-    register_setting('ubi_house_device_settings_group', 'mastodon_api_url');
-    register_setting('ubi_house_device_settings_group', 'mastodon_token');
-
-    add_settings_section(
-        'ubi_house_device_settings_mastodon_section',
-        'Mastodon Settings',
-        null,
-        'ubi-house-device-settings'
-    );
-
-    add_settings_field(
-        'mastodon_api_url',
-        'Mastodon API URL',
-        'skill_plugin_mastodon_api_url_callback',
-        'ubi-house-device-settings',
-        'ubi_house_device_settings_mastodon_section'
-    );
-
-    add_settings_field(
-        'mastodon_token',
-        'Mastodon Token',
-        'skill_plugin_mastodon_token_callback',
-        'ubi-house-device-settings',
-        'ubi_house_device_settings_mastodon_section'
-    );
-}
-add_action('admin_init', 'skill_plugin_settings_init');
-
-function skill_plugin_mastodon_api_url_callback() {
-    $mastodon_api_url = esc_attr(get_option('mastodon_api_url', ''));
-    echo "<input type='text' name='mastodon_api_url' value='{$mastodon_api_url}' />";
-}
-
-function skill_plugin_mastodon_token_callback() {
-    $mastodon_token = esc_attr(get_option('mastodon_token', ''));
-    echo "<input type='password' name='mastodon_token' value='{$mastodon_token}' />";
-}
-
-// 检查post的数值并进行联动
-add_action('save_post', 'check_post_value_for_linkage');
-
-function check_post_value_for_linkage($post_id) {
-    // 如果这是一个自动保存的版本，我们不会发送通知
+function check_post_value_and_notify($post_id) {
+    // If this is an autosave, we won't send a notification
     if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) 
         return;
 
-    // 获取post内容
-    $post_content = get_post_field('post_content', $post_id);
+    $selected_user = get_option('selected_user', '');
+    $post_author = get_post_field('post_author', $post_id);
 
-    // 这里我们假设数值是在post内容中的某个特定格式，例如[value=123]，你可以根据实际情况进行修改
-    preg_match('/\[value=(\d+)\]/', $post_content, $matches);
-    if (isset($matches[1])) {
-        $post_value = intval($matches[1]);
+    // Check if the post is from the selected user
+    if ($selected_user == $post_author) {
+        $post_content = get_post_field('post_content', $post_id);
+        preg_match('/\[value=(\d+)\]/', $post_content, $matches);
+        if (isset($matches[1])) {
+            $post_value = intval($matches[1]);
+            $condition = get_option('condition', '=');
+            $threshold_value = get_option('threshold_value', 0);
 
-        // 获取联动设定的阈值
-        $threshold_greater = get_option('linkage_threshold_greater', 0);
-        $threshold_less = get_option('linkage_threshold_less', PHP_INT_MAX);
+            $should_notify = false;
+            switch ($condition) {
+                case '=':
+                    $should_notify = ($post_value == $threshold_value);
+                    break;
+                case '>':
+                    $should_notify = ($post_value > $threshold_value);
+                    break;
+                case '<':
+                    $should_notify = ($post_value < $threshold_value);
+                    break;
+            }
 
-        // 检查数值是否满足联动条件
-        if ($post_value >= $threshold_greater && $post_value < $threshold_less) {
-            // 这里执行联动操作，例如发送ActivityPub通知到Mastodon账号
-            send_notification_to_mastodon("The value in post ID {$post_id} has reached the linkage threshold.");
+            if ($should_notify) {
+                send_notification_to_mastodon(get_option('notification_message', ''));
+            }
         }
     }
 }
@@ -186,7 +122,7 @@ function send_notification_to_mastodon($message) {
     $mastodon_api_url = get_option('mastodon_api_url', '');
     $mastodon_token = get_option('mastodon_token', '');
 
-    $response = wp_remote_post($mastodon_api_url, array(
+    $response = wp_remote_post($mastodon_api_url . '/api/v1/statuses', array(
         'headers' => array(
             'Authorization' => 'Bearer ' . $mastodon_token,
         ),
@@ -199,21 +135,4 @@ function send_notification_to_mastodon($message) {
         error_log($response->get_error_message());
     }
 }
-
-// 当插件被激活时创建一个新的用户角色
-function skill_plugin_activation() {
-    add_role('ubi_house_device', 'Ubi House Device', array(
-        'read' => true,
-        'edit_posts' => true,
-        'publish_posts' => true,
-        'delete_posts' => false,
-    ));
-}
-register_activation_hook(__FILE__, 'skill_plugin_activation');
-
-// 当插件被停用时删除该用户角色
-function skill_plugin_deactivation() {
-    remove_role('ubi_house_device');
-}
-register_deactivation_hook(__FILE__, 'skill_plugin_deactivation');
 ?>
