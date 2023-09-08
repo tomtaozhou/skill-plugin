@@ -1,3 +1,4 @@
+
 <?php
 /*
 Plugin Name: SKILL Plugin
@@ -122,17 +123,39 @@ function send_notification_to_mastodon($message) {
     $mastodon_api_url = get_option('mastodon_api_url', '');
     $mastodon_token = get_option('mastodon_token', '');
 
-    $response = wp_remote_post($mastodon_api_url . '/api/v1/statuses', array(
-        'headers' => array(
-            'Authorization' => 'Bearer ' . $mastodon_token,
-        ),
-        'body' => array(
-            'status' => $message,
-        ),
+    // Prepare the request
+    $api_endpoint = rtrim($mastodon_api_url, '/') . '/api/v1/statuses'; // Ensure the URL is correctly formatted
+    $headers = array(
+        'Authorization' => 'Bearer ' . $mastodon_token,
+        'Content-Type' => 'application/x-www-form-urlencoded' // Set the content type
+    );
+    $body = array(
+        'status' => $message
+    );
+
+    // Send the request
+    $response = wp_remote_post($api_endpoint, array(
+        'headers' => $headers,
+        'body' => http_build_query($body), // Convert the body array to a query string
+        'timeout' => 15 // Set a timeout
     ));
 
+    // Handle the response
     if (is_wp_error($response)) {
         error_log($response->get_error_message());
+    } else {
+        $response_body = wp_remote_retrieve_body($response);
+        $status = json_decode($response_body);
+        if (isset($status->url)) {
+            // Successfully posted to Mastodon
+            error_log("Successfully posted to Mastodon: " . $status->url);
+        } elseif (isset($status->error)) {
+            // There was an error posting to Mastodon
+            error_log("Error posting to Mastodon: " . $status->error);
+        } else {
+            // Unexpected response from Mastodon
+            error_log("Unexpected response from Mastodon: " . $response_body);
+        }
     }
 }
 ?>
