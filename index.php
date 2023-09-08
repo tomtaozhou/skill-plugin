@@ -78,7 +78,7 @@ function ubi_house_device_settings_page() {
 //添加联动界面
 function skill_add_linkage_page() {
     if (!current_user_can('manage_options')) {
-        wp_die(__('You do not have sufficient permissions to access this page.')));
+        wp_die(__('You do not have sufficient permissions to access this page.'));
     }
 
     // 检查是否有提交
