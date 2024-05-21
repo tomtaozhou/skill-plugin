@@ -4,7 +4,7 @@ Contributors: Tao Zhou
 Tags: Smart Home, ActivityPub, IoT  
 Requires at least: 5.5  
 Tested up to: 5.7  
-Stable tag: 1.0.0  
+Stable tag: 1.0  
 License: GPLv3  
 
 The SKILL plugin is developed for the Ubi-House system, facilitating the seamless integration among various Ubi-House smart devices.
