@@ -28,7 +28,7 @@ The design and implementation of the SKILL plugin are based on WordPress and sup
 
 ## Usage
 
-[Provide users with specific steps and guidelines on how to use the SKILL plugin within the Ubi-House system.]
+Provide users with specific steps and guidelines on how to use the SKILL plugin within the Ubi-House system.
 
 ## Future Outlook
 
