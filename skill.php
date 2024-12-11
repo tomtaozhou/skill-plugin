@@ -1,6 +1,6 @@
 <?php
 /*
-Plugin Name: SKILL Plugin
+Plugin Name: SKILL
 Description: Control and send notifications to ActivityPub devices based on post values from selected user.
 Author: Tao Zhou
 Version: 1.0
